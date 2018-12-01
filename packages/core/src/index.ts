@@ -4,10 +4,53 @@ const chalk = require('chalk');
 const MuteStream = require('mute-stream');
 const runAsync = require('run-async');
 const spinner = require('cli-spinners').dots;
-const ScreenManager = require('./lib/screen-manager');
+const ScreenManager = require('./screen-manager');
 
-class StateManager {
-  constructor(configFactory, initialState, render) {
+interface DefaultState {
+  message: string;
+  validate: any;
+  filter: any;
+  transformer: any;
+  default: any;
+  error: string;
+  loadingIncrement: number;
+  value: string;
+  status: 'idle' | 'loading' | 'error' | 'done';
+}
+
+interface Config<State> {
+  onKeypress(
+    value: string,
+    key: { name: string },
+    state: State,
+    setState: <K extends keyof State>(state: Pick<State, K>) => void
+  ): void;
+}
+
+type ConfigFactory<State> = Config<State> | ((any) => Config<State>);
+
+type Render<State, Config> = (state: State, config: Config) => string;
+
+class StateManager<State extends DefaultState, K extends keyof State & DefaultState> {
+  initialState: State & DefaultState;
+
+  currentState: Pick<State & DefaultState, K>;
+
+  config: Config<State & DefaultState>;
+
+  render: Render<State & DefaultState, Config<State & DefaultState>>;
+
+  rl: any;
+
+  screen: any;
+
+  cb: (value: string) => void;
+
+  constructor(
+    configFactory: ConfigFactory<State & DefaultState>,
+    initialState: State & DefaultState,
+    render: Render<State & DefaultState, Config<State & DefaultState>>
+  ) {
     this.initialState = Object.assign(
       {
         message: initialState.message,
@@ -38,12 +81,13 @@ class StateManager {
     });
     this.screen = new ScreenManager(this.rl);
 
-    let config = configFactory;
-    if (_.isFunction(configFactory)) {
-      config = configFactory(this.rl);
+    if (typeof configFactory === 'function') {
+      this.config = configFactory(this.rl);
+    } else {
+      this.config = configFactory;
     }
-    this.config = config;
 
+    this.cb = _.noop;
     this.onKeypress = this.onKeypress.bind(this);
     this.onSubmit = this.onSubmit.bind(this);
     this.startLoading = this.startLoading.bind(this);
@@ -51,7 +95,7 @@ class StateManager {
     this.setState = this.setState.bind(this);
   }
 
-  async execute(cb) {
+  async execute(cb: (string) => void) {
     let { message } = this.getState();
     this.cb = cb;
 
@@ -70,7 +114,7 @@ class StateManager {
     this.rl.on('line', this.onSubmit);
   }
 
-  onKeypress(value, key) {
+  onKeypress(value: string, key: { name: string }) {
     const { onKeypress = _.noop } = this.config;
     // Ignore enter keypress. The "line" event is handling those.
     if (key.name === 'enter' || key.name === 'return') {
@@ -137,7 +181,7 @@ class StateManager {
     this.cb(value);
   }
 
-  setState(partialState) {
+  setState(partialState: Pick<State & DefaultState, K>) {
     this.currentState = Object.assign({}, this.currentState, partialState);
     this.onChange(this.getState());
   }

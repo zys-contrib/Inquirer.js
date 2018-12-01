@@ -2,7 +2,10 @@
   "name": "@inquirer/core",
   "version": "0.0.1-alpha.0",
   "description": "Core Inquirer prompt API",
-  "main": "index.js",
+  "main": "lib/index.js",
+  "include": [
+    "lib"
+  ],
   "repository": "SBoudrias/Inquirer.js",
   "keywords": [
     "cli",
@@ -10,6 +13,9 @@
     "inquirer",
     "command-line"
   ],
+  "scripts": {
+    "tsc": "tsc"
+  },
   "author": "Simon Boudrias",
   "license": "MIT",
   "dependencies": {
