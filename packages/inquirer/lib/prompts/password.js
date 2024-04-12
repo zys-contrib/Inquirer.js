@@ -4,8 +4,8 @@
 
 import chalk from 'chalk';
 import { map, takeUntil } from 'rxjs';
-import Base from './base.js';
 import observe from '../utils/events.js';
+import Base from './base.js';
 
 function mask(input, maskChar) {
   input = String(input);
@@ -115,9 +115,7 @@ export default class PasswordPrompt extends Base {
 
   onKeypress() {
     // If user press a key, just clear the default value
-    if (this.opt.default) {
-      this.opt.default = undefined;
-    }
+    this.opt.default &&= undefined;
 
     this.render();
   }

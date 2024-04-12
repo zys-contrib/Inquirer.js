@@ -1,45 +1,56 @@
+import { Stream } from 'node:stream';
 import MuteStream from 'mute-stream';
 import stripAnsi from 'strip-ansi';
-import { Stream } from 'node:stream';
+import ansiEscapes from 'ansi-escapes';
 import type { Prompt } from '@inquirer/type';
 
-const logStore: Array<Parameters<typeof console.log>> = [];
+const ignoredAnsi = new Set([ansiEscapes.cursorHide, ansiEscapes.cursorShow]);
 
-beforeEach(() => {
-  logStore.length = 0;
-});
+class BufferedStream extends Stream.Writable {
+  #_fullOutput: string = '';
+  #_chunks: Array<string> = [];
+  #_rawChunks: Array<string> = [];
 
-afterEach(() => {
-  logStore.forEach((...line) => console.log(...line));
-});
+  override _write(chunk: Buffer, _encoding: string, callback: () => void) {
+    const str = chunk.toString();
 
-export function log(...line: Parameters<typeof console.log>) {
-  logStore.push(line);
+    this.#_fullOutput += str;
+
+    // There's some ANSI Inquirer just send to keep state of the terminal clear; we'll ignore those since they're
+    // unlikely to be used by end users or part of prompt code.
+    if (!ignoredAnsi.has(str)) {
+      this.#_rawChunks.push(str);
+    }
+
+    // Stripping the ANSI codes here because Inquirer will push commands ANSI (like cursor move.)
+    // This is probably fine since we don't care about those for testing; but this could become
+    // an issue if we ever want to test for those.
+    if (stripAnsi(str).trim().length > 0) {
+      this.#_chunks.push(str);
+    }
+    callback();
+  }
+
+  getLastChunk({ raw }: { raw?: boolean }): string {
+    const chunks = raw ? this.#_rawChunks : this.#_chunks;
+    const lastChunk = chunks[chunks.length - 1];
+    return lastChunk ?? '';
+  }
+
+  getFullOutput(): string {
+    return this.#_fullOutput;
+  }
 }
 
 export async function render<TestedPrompt extends Prompt<any, any>>(
   prompt: TestedPrompt,
   props: Parameters<TestedPrompt>[0],
-  options?: Parameters<TestedPrompt>[1]
+  options?: Parameters<TestedPrompt>[1],
 ) {
   const input = new MuteStream();
+  input.unmute();
 
-  const buffer: Array<string> = [];
-  const data: Array<string> = [];
-  const output = new Stream.Writable({
-    write(chunk, _encoding, next) {
-      buffer.push(chunk.toString());
-      next();
-    },
-  });
-
-  const processScreen = () => {
-    if (buffer.length > 0) {
-      const prevScreen = buffer.join('');
-      data.push(stripAnsi(prevScreen));
-      buffer.length = 0;
-    }
-  };
+  const output = new BufferedStream();
 
   const answer = prompt(props, { input, output, ...options });
 
@@ -48,9 +59,27 @@ export async function render<TestedPrompt extends Prompt<any, any>>(
   await Promise.resolve();
 
   const events = {
-    keypress(name: string) {
-      processScreen();
-      input.emit('keypress', null, { name });
+    keypress(
+      key:
+        | string
+        | {
+            name?: string | undefined;
+            ctrl?: boolean | undefined;
+            meta?: boolean | undefined;
+            shift?: boolean | undefined;
+          },
+    ) {
+      if (typeof key === 'string') {
+        input.emit('keypress', null, { name: key });
+      } else {
+        input.emit('keypress', null, key);
+      }
+    },
+    type(text: string) {
+      input.write(text);
+      for (const char of text) {
+        input.emit('keypress', null, { name: char });
+      }
     },
   };
 
@@ -58,9 +87,12 @@ export async function render<TestedPrompt extends Prompt<any, any>>(
     answer,
     input,
     events,
-    getScreen(): string {
-      processScreen();
-      return data[data.length - 1] ?? '';
+    getScreen({ raw }: { raw?: boolean } = {}): string {
+      const lastScreen = output.getLastChunk({ raw });
+      return raw ? lastScreen : stripAnsi(lastScreen).trim();
+    },
+    getFullOutput(): string {
+      return output.getFullOutput();
     },
   };
 }

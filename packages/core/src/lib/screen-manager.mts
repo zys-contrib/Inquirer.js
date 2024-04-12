@@ -1,10 +1,8 @@
-import cliWidth from 'cli-width';
+import type { CursorPos } from 'node:readline';
 import stripAnsi from 'strip-ansi';
-import stringWidth from 'string-width';
 import ansiEscapes from 'ansi-escapes';
-import * as util from './readline.mjs';
-import { breakLines } from './utils.mjs';
-import { InquirerReadline } from '../index.mjs';
+import { breakLines, readlineWidth } from './utils.mjs';
+import type { InquirerReadline } from './read-line.type.mjs';
 
 const height = (content: string): number => content.split('\n').length;
 const lastLine = (content: string): string => content.split('\n').pop() ?? '';
@@ -13,15 +11,14 @@ export default class ScreenManager {
   // These variables are keeping information to allow correct prompt re-rendering
   private height: number = 0;
   private extraLinesUnderPrompt: number = 0;
+  private cursorPos: CursorPos;
 
   constructor(private readonly rl: InquirerReadline) {
     this.rl = rl;
+    this.cursorPos = rl.getCursorPos();
   }
 
   render(content: string, bottomContent: string = '') {
-    this.clean();
-
-    this.rl.output.unmute();
     /**
      * Write message to screen and setPrompt to control backspace
      */
@@ -40,9 +37,9 @@ export default class ScreenManager {
     this.rl.setPrompt(prompt);
 
     // SetPrompt will change cursor position, now we can get correct value
-    const cursorPos = (this.rl as any)._getCursorPos();
-    const width = cliWidth({ defaultWidth: 80, output: this.rl.output });
+    this.cursorPos = this.rl.getCursorPos();
 
+    const width = readlineWidth();
     content = breakLines(content, width);
     bottomContent = breakLines(bottomContent, width);
 
@@ -53,8 +50,7 @@ export default class ScreenManager {
       content += '\n';
     }
 
-    const fullContent = content + (bottomContent ? '\n' + bottomContent : '');
-    this.rl.output.write(fullContent);
+    let output = content + (bottomContent ? '\n' + bottomContent : '');
 
     /**
      * Re-adjust the cursor at the correct position.
@@ -62,29 +58,50 @@ export default class ScreenManager {
 
     // We need to consider parts of the prompt under the cursor as part of the bottom
     // content in order to correctly cleanup and re-render.
-    const promptLineUpDiff = Math.floor(rawPromptLine.length / width) - cursorPos.rows;
+    const promptLineUpDiff =
+      Math.floor(rawPromptLine.length / width) - this.cursorPos.rows;
     const bottomContentHeight =
       promptLineUpDiff + (bottomContent ? height(bottomContent) : 0);
 
     // Return cursor to the input position (on top of the bottomContent)
-    util.up(this.rl, bottomContentHeight);
-    // Move cursor at the start of the line, then return to the initial left offset.
-    util.left(this.rl, stringWidth(lastLine(fullContent)));
-    util.right(this.rl, cursorPos.cols);
+    if (bottomContentHeight > 0) output += ansiEscapes.cursorUp(bottomContentHeight);
+
+    // Return cursor to the initial left offset.
+    output += ansiEscapes.cursorTo(this.cursorPos.cols);
+
+    this.clean();
+    this.rl.output.unmute();
 
     /**
      * Set up state for next re-rendering
      */
     this.extraLinesUnderPrompt = bottomContentHeight;
-    this.height = height(fullContent);
+    this.height = height(output);
 
+    this.rl.output.write(output);
     this.rl.output.mute();
+  }
+
+  checkCursorPos() {
+    const cursorPos = this.rl.getCursorPos();
+    if (cursorPos.cols !== this.cursorPos.cols) {
+      this.rl.output.unmute();
+      this.rl.output.write(ansiEscapes.cursorTo(cursorPos.cols));
+      this.rl.output.mute();
+      this.cursorPos = cursorPos;
+    }
   }
 
   clean() {
     this.rl.output.unmute();
-    util.down(this.rl, this.extraLinesUnderPrompt);
-    util.clearLine(this.rl, this.height);
+    this.rl.output.write(
+      [
+        this.extraLinesUnderPrompt > 0
+          ? ansiEscapes.cursorDown(this.extraLinesUnderPrompt)
+          : '',
+        ansiEscapes.eraseLines(this.height),
+      ].join(''),
+    );
 
     this.extraLinesUnderPrompt = 0;
     this.rl.output.mute();
@@ -93,8 +110,14 @@ export default class ScreenManager {
   clearContent() {
     this.rl.output.unmute();
     // Reset the cursor at the end of the previously displayed content
-    util.down(this.rl, this.extraLinesUnderPrompt);
-    this.rl.output.write('\n');
+    this.rl.output.write(
+      [
+        this.extraLinesUnderPrompt > 0
+          ? ansiEscapes.cursorDown(this.extraLinesUnderPrompt)
+          : '',
+        '\n',
+      ].join(''),
+    );
     this.rl.output.mute();
   }
 

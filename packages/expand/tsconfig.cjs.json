@@ -1,14 +1,10 @@
 {
-  "extends": "../../tsconfig.json",
-  "include": [
-    "./src"
-  ],
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "lib": [
-      "ES6"
-    ],
+    "lib": ["es2023"],
     "target": "es6",
-    "moduleResolution": "node",
+    "module": "commonjs",
+    "moduleResolution": "node10",
     "outDir": "dist/cjs",
     "declarationDir": "dist/cjs/types"
   }

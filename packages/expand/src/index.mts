@@ -4,15 +4,23 @@ import {
   useKeypress,
   usePrefix,
   isEnterKey,
-  AsyncPromptConfig,
+  makeTheme,
+  type Theme,
 } from '@inquirer/core';
-import type {} from '@inquirer/type';
+import type { PartialDeep } from '@inquirer/type';
 import chalk from 'chalk';
 
-type ExpandConfig = AsyncPromptConfig & {
-  choices: { key: string; name: string; value?: string }[];
+type ExpandChoice =
+  | { key: string; name: string }
+  | { key: string; value: string }
+  | { key: string; name: string; value: string };
+
+type ExpandConfig = {
+  message: string;
+  choices: ReadonlyArray<ExpandChoice>;
   default?: string;
   expanded?: boolean;
+  theme?: PartialDeep<Theme>;
 };
 
 const helpChoice = {
@@ -20,6 +28,16 @@ const helpChoice = {
   name: 'Help, list all options',
   value: undefined,
 };
+
+function getChoiceKey(choice: ExpandChoice, key: 'name' | 'value'): string {
+  if (key === 'name') {
+    if ('name' in choice) return choice.name;
+    return choice.value;
+  }
+
+  if ('value' in choice) return choice.value;
+  return choice.name;
+}
 
 export default createPrompt<string, ExpandConfig>((config, done) => {
   const {
@@ -31,17 +49,18 @@ export default createPrompt<string, ExpandConfig>((config, done) => {
   const [value, setValue] = useState<string>('');
   const [expanded, setExpanded] = useState<boolean>(defaultExpandState);
   const [errorMsg, setError] = useState<string | undefined>(undefined);
-  const prefix = usePrefix();
+  const theme = makeTheme(config.theme);
+  const prefix = usePrefix({ theme });
 
-  useKeypress((key, rl) => {
-    if (isEnterKey(key)) {
+  useKeypress((event, rl) => {
+    if (isEnterKey(event)) {
       const answer = (value || defaultKey).toLowerCase();
       if (answer === 'h' && !expanded) {
         setExpanded(true);
       } else {
         const selectedChoice = choices.find(({ key }) => key === answer);
         if (selectedChoice) {
-          const finalValue = selectedChoice.value || selectedChoice.name;
+          const finalValue = getChoiceKey(selectedChoice, 'value');
           setValue(finalValue);
           setStatus('done');
           done(finalValue);
@@ -57,10 +76,11 @@ export default createPrompt<string, ExpandConfig>((config, done) => {
     }
   });
 
-  const message = chalk.bold(config.message);
+  const message = theme.style.message(config.message);
 
   if (status === 'done') {
-    return `${prefix} ${message} ${chalk.cyan(value)}`;
+    // TODO: `value` should be the display name instead of the raw value.
+    return `${prefix} ${message} ${theme.style.answer(value)}`;
   }
 
   const allChoices = expanded ? choices : [...choices, helpChoice];
@@ -76,16 +96,16 @@ export default createPrompt<string, ExpandConfig>((config, done) => {
       return choice.key;
     })
     .join('');
-  shortChoices = chalk.dim(` (${shortChoices})`);
+  shortChoices = ` ${theme.style.defaultAnswer(shortChoices)}`;
 
   // Expanded display style
   if (expanded) {
     shortChoices = '';
     longChoices = allChoices
       .map((choice) => {
-        const line = `  ${choice.key}) ${choice.name || choice.value}`;
+        const line = `  ${choice.key}) ${getChoiceKey(choice, 'name')}`;
         if (choice.key === value.toLowerCase()) {
-          return chalk.cyan(line);
+          return theme.style.highlight(line);
         }
 
         return line;
@@ -96,12 +116,12 @@ export default createPrompt<string, ExpandConfig>((config, done) => {
   let helpTip = '';
   const currentOption = allChoices.find(({ key }) => key === value.toLowerCase());
   if (currentOption) {
-    helpTip = `${chalk.cyan('>>')} ${currentOption.name || currentOption.value}`;
+    helpTip = `${chalk.cyan('>>')} ${getChoiceKey(currentOption, 'name')}`;
   }
 
   let error = '';
   if (errorMsg) {
-    error = chalk.red(`> ${errorMsg}`);
+    error = theme.style.error(errorMsg);
   }
 
   return [

@@ -1,5 +1,5 @@
-import inquirer from '../lib/inquirer.js';
 import { Observable } from 'rxjs';
+import inquirer from '../lib/inquirer.js';
 
 const observe = Observable.create((obs) => {
   obs.next({
@@ -23,7 +23,7 @@ const observe = Observable.create((obs) => {
     message: "What's your phone number",
     validate(value) {
       const pass = value.match(
-        /^([01]{1})?[-.\s]?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})\s?((?:#|ext\.?\s?|x\.?\s?){1}(?:\d+)?)?$/i
+        /^([01]{1})?[-.\s]?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})\s?((?:#|ext\.?\s?|x\.?\s?){1}(?:\d+)?)?$/i,
       );
       if (pass) {
         return true;

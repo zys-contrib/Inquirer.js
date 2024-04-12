@@ -1,36 +1,79 @@
-import type { Prompt } from '@inquirer/type';
-import input from '@inquirer/input';
-import chalk from 'chalk';
+import {
+  createPrompt,
+  useState,
+  useKeypress,
+  usePrefix,
+  isEnterKey,
+  makeTheme,
+  type Theme,
+} from '@inquirer/core';
+import ansiEscapes from 'ansi-escapes';
+import type { PartialDeep } from '@inquirer/type';
 
-type PasswordConfig = Parameters<typeof input>[0] & {
+type PasswordConfig = {
+  message: string;
   mask?: boolean | string;
+  validate?: (value: string) => boolean | string | Promise<string | boolean>;
+  theme?: PartialDeep<Theme>;
 };
 
-const password: Prompt<string, PasswordConfig> = (config, context) => {
-  if (config.transformer) {
-    throw new Error(
-      'Inquirer password prompt do not support custom transformer function. Use the input prompt instead.'
-    );
+export default createPrompt<string, PasswordConfig>((config, done) => {
+  const { validate = () => true } = config;
+  const theme = makeTheme(config.theme);
+
+  const [status, setStatus] = useState<string>('pending');
+  const [errorMsg, setError] = useState<string | undefined>(undefined);
+  const [value, setValue] = useState<string>('');
+
+  const isLoading = status === 'loading';
+  const prefix = usePrefix({ isLoading, theme });
+
+  useKeypress(async (key, rl) => {
+    // Ignore keypress while our prompt is doing other processing.
+    if (status !== 'pending') {
+      return;
+    }
+
+    if (isEnterKey(key)) {
+      const answer = value;
+      setStatus('loading');
+      const isValid = await validate(answer);
+      if (isValid === true) {
+        setValue(answer);
+        setStatus('done');
+        done(answer);
+      } else {
+        // Reset the readline line value to the previous value. On line event, the value
+        // get cleared, forcing the user to re-enter the value instead of fixing it.
+        rl.write(value);
+        setError(isValid || 'You must provide a valid value');
+        setStatus('pending');
+      }
+    } else {
+      setValue(rl.line);
+      setError(undefined);
+    }
+  });
+
+  const message = theme.style.message(config.message);
+
+  let formattedValue = '';
+  let helpTip;
+  if (config.mask) {
+    const maskChar = typeof config.mask === 'string' ? config.mask : '*';
+    formattedValue = maskChar.repeat(value.length);
+  } else if (status !== 'done') {
+    helpTip = `${theme.style.help('[input is masked]')}${ansiEscapes.cursorHide}`;
   }
 
-  return input(
-    {
-      ...config, // Make sure we do not display the default password
-      default: undefined,
-      transformer(input: string, { isFinal }: { isFinal: boolean }) {
-        if (config.mask) {
-          return String(config.mask).repeat(input.length);
-        }
+  if (status === 'done') {
+    formattedValue = theme.style.answer(formattedValue);
+  }
 
-        if (!isFinal) {
-          return chalk.dim('[input is masked]');
-        }
+  let error = '';
+  if (errorMsg) {
+    error = theme.style.error(errorMsg);
+  }
 
-        return '';
-      },
-    },
-    context
-  );
-};
-
-export default password;
+  return [[prefix, message, formattedValue, helpTip].filter(Boolean).join(' '), error];
+});

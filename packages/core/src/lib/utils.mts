@@ -1,4 +1,6 @@
+import cliWidth from 'cli-width';
 import wrapAnsi from 'wrap-ansi';
+import { readline } from './hook-engine.mjs';
 
 /**
  * Force line returns at specific width. This function is ANSI code friendly and it'll
@@ -7,9 +9,21 @@ import wrapAnsi from 'wrap-ansi';
  * @param {number} width
  * @return {string}
  */
-export const breakLines = (content: string, width: number): string =>
-  content
+export function breakLines(content: string, width: number): string {
+  return content
     .split('\n')
-    .map((line) => wrapAnsi(line, width, { trim: false, hard: true }).split('\n'))
-    .flat()
+    .flatMap((line) =>
+      wrapAnsi(line, width, { trim: false, hard: true })
+        .split('\n')
+        .map((str) => str.trimEnd()),
+    )
     .join('\n');
+}
+
+/**
+ * Returns the width of the active readline, or 80 as default value.
+ * @returns {number}
+ */
+export function readlineWidth(): number {
+  return cliWidth({ defaultWidth: 80, output: readline().output });
+}

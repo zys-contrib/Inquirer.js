@@ -13,6 +13,7 @@ const questions = [
     name: 'toBeDelivered',
     message: 'Is this for delivery?',
     default: false,
+    transformer: (answer) => (answer ? '👍' : '👎'),
   },
   {
     type: 'input',
@@ -20,7 +21,7 @@ const questions = [
     message: "What's your phone number?",
     validate(value) {
       const pass = value.match(
-        /^([01]{1})?[-.\s]?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})\s?((?:#|ext\.?\s?|x\.?\s?){1}(?:\d+)?)?$/i
+        /^([01]{1})?[-.\s]?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})\s?((?:#|ext\.?\s?|x\.?\s?){1}(?:\d+)?)?$/i,
       );
       if (pass) {
         return true;

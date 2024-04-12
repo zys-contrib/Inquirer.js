@@ -4,8 +4,9 @@
   "author": "Simon Boudrias <admin@simonboudrias.com>",
   "license": "MIT",
   "engines": {
-    "node": ">=14.18.0"
+    "node": ">=18"
   },
+  "packageManager": "yarn@4.1.1",
   "keywords": [
     "answer",
     "answers",
@@ -46,57 +47,49 @@
     "zsh"
   ],
   "devDependencies": {
-    "@jest/globals": "^29.5.0",
-    "@sindresorhus/tsconfig": "^3.0.1",
-    "@types/jest": "^29.4.0",
-    "@types/mute-stream": "^0.0.1",
-    "@types/node": "^18.15.0",
-    "@types/wrap-ansi": "^8.0.1",
-    "@typescript-eslint/eslint-plugin": "^5.54.1",
-    "@typescript-eslint/parser": "^5.54.1",
-    "eslint": "^8.36.0",
-    "eslint-config-prettier": "^8.7.0",
-    "eslint-config-xo": "^0.43.1",
-    "eslint-plugin-n": "^15.6.1",
-    "eslint-plugin-prettier": "^4.2.1",
-    "eslint-plugin-unicorn": "^46.0.0",
-    "globby": "^13.1.3",
-    "husky": "^8.0.3",
-    "jest": "^29.5.0",
-    "lerna": "^6.5.1",
-    "lint-staged": "^13.2.0",
-    "prettier": "^2.8.4",
-    "ts-jest": "^29.0.5",
-    "ts-node": "^10.9.1",
-    "typescript": "^4.9.5"
+    "@arethetypeswrong/cli": "^0.15.3",
+    "@sindresorhus/tsconfig": "^5.0.0",
+    "@types/node": "^20.12.7",
+    "@typescript-eslint/eslint-plugin": "^7.6.0",
+    "@typescript-eslint/parser": "^7.6.0",
+    "@vitest/coverage-v8": "^1.5.0",
+    "@vitest/ui": "^1.5.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-xo": "^0.44.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-n": "^17.2.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "eslint-plugin-unicorn": "^52.0.0",
+    "globby": "^14.0.1",
+    "husky": "^9.0.11",
+    "lerna": "^8.1.2",
+    "lint-staged": "^15.2.2",
+    "prettier": "^3.2.5",
+    "ts-node": "^10.9.2",
+    "turbo": "^1.13.2",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.0"
+  },
+  "resolutions": {
+    "type-fest": "^4.0.0"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "integration/*"
   ],
   "scripts": {
-    "bootstrap": "lerna bootstrap --no-ci",
-    "publish": "lerna run tsc && lerna publish",
-    "pretest": "lerna run tsc && eslint . --ext .js --ext .ts --ext .mts",
-    "jest": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "test": "yarn jest && lerna exec npm test --scope inquirer"
+    "prepare": "husky && turbo tsc attw",
+    "setup": "node ./tools/setup-packages.mjs",
+    "pretest": "eslint . && turbo tsc",
+    "test": "vitest --run packages && node --test integration/**/*.test.*"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/SBoudrias/Inquirer.js.git"
   },
-  "husky": {
-    "hooks": {
-      "pre-commit": "lint-staged"
-    }
-  },
   "lint-staged": {
-    "*.json": [
-      "prettier --write",
-      "git add"
-    ],
-    "*.m?[jt]sx?": [
-      "eslint --fix",
-      "git add"
-    ]
+    "*": "yarn prettier --write",
+    "*.m?[jt]sx?": "yarn eslint --fix"
   }
 }

@@ -28,7 +28,7 @@ const confirm = createPrompt<boolean, { message: string; default?: boolean }>(
   (config, done) => {
     const [status, setStatus] = useState('pending');
     const [value, setValue] = useState('');
-    const prefix = usePrefix();
+    const prefix = usePrefix({});
 
     useKeypress((key, rl) => {
       if (isEnterKey(key)) {
@@ -51,7 +51,7 @@ const confirm = createPrompt<boolean, { message: string; default?: boolean }>(
 
     const message = chalk.bold(config.message);
     return `${prefix} ${message}${defaultValue} ${formattedValue}`;
-  }
+  },
 );
 
 /**
@@ -73,17 +73,19 @@ See more examples:
 
 ## API
 
-### `createPrompt(config, context)`
+### `createPrompt(viewFn)`
 
-The `createPrompt` function returns an asynchronous function that returns a promise that'll resolve to the valid answer a user submit. This prompt function takes the prompt configuration as its first argument (this is defined by each prompt), and the context options as a second argument.
+The `createPrompt` function returns an asynchronous function that returns a cancelable promise resolving to the valid answer a user submit. This prompt function takes the prompt configuration as its first argument (this is defined by each prompt), and the context options as a second argument.
 
-The context options are:
+The prompt configuration is unique to each prompt. The context options are:
 
 | Property          | Type                    | Required | Description                                                  |
 | ----------------- | ----------------------- | -------- | ------------------------------------------------------------ |
 | input             | `NodeJS.ReadableStream` | no       | The stdin stream (defaults to `process.stdin`)               |
 | output            | `NodeJS.WritableStream` | no       | The stdout stream (defaults to `process.stdout`)             |
 | clearPromptOnDone | `boolean`               | no       | If true, we'll clear the screen after the prompt is answered |
+
+The cancelable promise exposes a `cancel` method that'll exit the prompt and reject the promise.
 
 #### Typescript
 
@@ -102,10 +104,12 @@ Those hooks are matching the React hooks API:
 - `useState`
 - `useRef`
 - `useEffect`
+- `useMemo`
 
 And those are custom utilities from Inquirer:
 
 - `useKeypress`
+- `usePagination`
 - `usePrefix`
 
 ### Key utilities
@@ -119,21 +123,100 @@ Listening for keypress events inside an inquirer prompt is a very common pattern
 - `isDownKey()` - Note: this utility will handle vim and emacs keybindings (down, `j`, and `ctrl+n`)
 - `isNumberKey()` one of 1, 2, 3, 4, 5, 6, 7, 8, 9, 0
 
-### `Paginator`
+### `usePagination`
 
-When looping through a long list of options (like in the `select` prompt), paginating the results appearing on the screen at once can be necessary. The `Paginator` utility is there to help this use case.
+When looping through a long list of options (like in the `select` prompt), paginating the results appearing on the screen at once can be necessary. The `usePagination` hook is the utility used within the `select` and `checkbox` prompts to cycle through the list of options.
+
+Pagination works by taking in the list of options and returning a subset of the rendered items that fit within the page. The hook takes in a few options. It needs a list of options (`items`), and a `pageSize` which is the number of lines to be rendered. The `active` index is the index of the currently selected/selectable item. The `loop` option is a boolean that indicates if the list should loop around when reaching the end: this is the default behavior. The pagination hook renders items only as necessary, so it takes a function that can render an item at an index, including an `active` state, called `renderItem`.
 
 ```js
 export default createPrompt((config, done) => {
-  const paginator = useRef(new Paginator()).current;
+  const [active, setActive] = useState(0);
 
-  const windowedChoices = paginator.paginate(allChoices, cursorPosition, config.pageSize);
+  const allChoices = config.choices.map((choice) => choice.name);
 
-  return '...';
+  const page = usePagination({
+    items: allChoices,
+    active: active,
+    renderItem: ({ item, index, isActive }) => `${isActive ? ">" : " "}${index}. ${item.toString()}`
+    pageSize: config.pageSize,
+    loop: config.loop,
+  });
+
+  return `... ${page}`;
 });
+```
+
+### Theming
+
+Theming utilities will allow you to expose customization of the prompt style. Inquirer also has a few standard theme values shared across all the official prompts.
+
+To allow standard customization:
+
+```ts
+import { createPrompt, usePrefix, makeTheme, type Theme } from '@inquirer/core';
+import type { PartialDeep } from '@inquirer/type';
+
+type PromptConfig = {
+  theme?: PartialDeep<Theme>;
+};
+
+export default createPrompt<string, PromptConfig>((config, done) => {
+  const theme = makeTheme(config.theme);
+
+  const prefix = usePrefix({ isLoading, theme });
+
+  return `${prefix} ${theme.style.highlight('hello')}`;
+});
+```
+
+To setup a custom theme:
+
+```ts
+import { createPrompt, makeTheme, type Theme } from '@inquirer/core';
+import type { PartialDeep } from '@inquirer/type';
+
+type PromptTheme = {};
+
+const promptTheme: PromptTheme = {
+  icon: '!',
+};
+
+type PromptConfig = {
+  theme?: PartialDeep<Theme<PromptTheme>>;
+};
+
+export default createPrompt<string, PromptConfig>((config, done) => {
+  const theme = makeTheme(promptTheme, config.theme);
+
+  const prefix = usePrefix({ isLoading, theme });
+
+  return `${prefix} ${theme.icon}`;
+});
+```
+
+The [default theme keys cover](https://github.com/SBoudrias/Inquirer.js/blob/theme/packages/core/src/lib/theme.mts):
+
+```ts
+type DefaultTheme = {
+  prefix: string;
+  spinner: {
+    interval: number;
+    frames: string[];
+  };
+  style: {
+    answer: (text: string) => string;
+    message: (text: string) => string;
+    error: (text: string) => string;
+    defaultAnswer: (text: string) => string;
+    help: (text: string) => string;
+    highlight: (text: string) => string;
+    key: (text: string) => string;
+  };
+};
 ```
 
 # License
 
-Copyright (c) 2022 Simon Boudrias (twitter: [@vaxilart](https://twitter.com/Vaxilart))
+Copyright (c) 2023 Simon Boudrias (twitter: [@vaxilart](https://twitter.com/Vaxilart))<br/>
 Licensed under the MIT license.

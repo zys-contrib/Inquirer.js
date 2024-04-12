@@ -4,77 +4,104 @@ import {
   useKeypress,
   usePrefix,
   isEnterKey,
-  AsyncPromptConfig,
+  Separator,
+  makeTheme,
+  type Theme,
 } from '@inquirer/core';
-import type {} from '@inquirer/type';
+import type { PartialDeep } from '@inquirer/type';
 import chalk from 'chalk';
 
 const numberRegex = /[0-9]+/;
 
-type RawlistConfig = AsyncPromptConfig & {
-  choices: { value: string; name?: string; key?: string }[];
+type Choice<Value> = {
+  value: Value;
+  name?: string;
+  key?: string;
 };
 
-export default createPrompt<string, RawlistConfig>((config, done) => {
-  const { choices } = config;
-  const [status, setStatus] = useState<string>('pending');
-  const [value, setValue] = useState<string>('');
-  const [errorMsg, setError] = useState<string | undefined>(undefined);
-  const prefix = usePrefix();
+type RawlistConfig<Value> = {
+  message: string;
+  choices: ReadonlyArray<Choice<Value> | Separator>;
+  theme?: PartialDeep<Theme>;
+};
 
-  useKeypress((key, rl) => {
-    if (isEnterKey(key)) {
-      let selectedChoice;
-      if (numberRegex.test(value)) {
-        const answer = parseInt(value, 10) - 1;
-        selectedChoice = choices[answer];
-      } else {
-        const answer = value.toLowerCase();
-        selectedChoice = choices.find(({ key }) => key === answer);
-      }
+function isSelectableChoice<T>(
+  choice: undefined | Separator | Choice<T>,
+): choice is Choice<T> {
+  return choice != null && !Separator.isSeparator(choice);
+}
 
-      if (selectedChoice) {
-        const finalValue = selectedChoice.value || selectedChoice.name;
-        setValue(finalValue!);
-        setStatus('done');
-        done(finalValue!);
-      } else if (value === '') {
-        setError('Please input a value');
+export default createPrompt(
+  <Value extends unknown>(config: RawlistConfig<Value>, done: (value: Value) => void) => {
+    const { choices } = config;
+    const [status, setStatus] = useState<string>('pending');
+    const [value, setValue] = useState<string>('');
+    const [errorMsg, setError] = useState<string | undefined>(undefined);
+    const theme = makeTheme(config.theme);
+    const prefix = usePrefix({ theme });
+
+    useKeypress((key, rl) => {
+      if (isEnterKey(key)) {
+        let selectedChoice;
+        if (numberRegex.test(value)) {
+          const answer = parseInt(value, 10) - 1;
+          selectedChoice = choices.filter(isSelectableChoice)[answer];
+        } else {
+          const answer = value.toLowerCase();
+          selectedChoice = choices.find(
+            (choice) => isSelectableChoice(choice) && choice.key === answer,
+          );
+        }
+
+        if (isSelectableChoice(selectedChoice)) {
+          setValue(selectedChoice.name || String(selectedChoice.value));
+          setStatus('done');
+          done(selectedChoice.value);
+        } else if (value === '') {
+          setError('Please input a value');
+        } else {
+          setError(`"${chalk.red(value)}" isn't an available option`);
+        }
       } else {
-        setError(`"${chalk.red(value)}" isn't an available option`);
+        setValue(rl.line);
+        setError(undefined);
       }
-    } else {
-      setValue(rl.line);
-      setError(undefined);
+    });
+
+    const message = theme.style.message(config.message);
+
+    if (status === 'done') {
+      return `${prefix} ${message} ${theme.style.answer(value)}`;
     }
-  });
 
-  const message = chalk.bold(config.message);
+    let index = 0;
+    const choicesStr = choices
+      .map((choice) => {
+        if (Separator.isSeparator(choice)) {
+          return ` ${choice.separator}`;
+        }
 
-  if (status === 'done') {
-    return `${prefix} ${message} ${chalk.cyan(value)}`;
-  }
+        index += 1;
+        const line = `  ${choice.key || index}) ${choice.name || choice.value}`;
 
-  const choicesStr = choices
-    .map((choice, index) => {
-      const humanIndex = index + 1;
-      const line = `  ${choice.key || humanIndex}) ${choice.name || choice.value}`;
+        if (choice.key === value.toLowerCase() || String(index) === value) {
+          return theme.style.highlight(line);
+        }
 
-      if (choice.key === value.toLowerCase() || String(humanIndex) === value) {
-        return chalk.cyan(line);
-      }
+        return line;
+      })
+      .join('\n');
 
-      return line;
-    })
-    .join('\n');
+    let error = '';
+    if (errorMsg) {
+      error = theme.style.error(errorMsg);
+    }
 
-  let error = '';
-  if (errorMsg) {
-    error = chalk.red(`> ${errorMsg}`);
-  }
+    return [
+      `${prefix} ${message} ${value}`,
+      [choicesStr, error].filter(Boolean).join('\n'),
+    ];
+  },
+);
 
-  return [
-    `${prefix} ${message} ${value}`,
-    [choicesStr, error].filter(Boolean).join('\n'),
-  ];
-});
+export { Separator };
